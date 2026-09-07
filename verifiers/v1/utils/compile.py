@@ -8,6 +8,7 @@ from collections.abc import Collection
 from verifiers.v1.configs.runtime import NetworkPolicyConfig
 from verifiers.v1.harness import Harness
 from verifiers.v1.runtimes import (
+    AgentEnvConfig,
     PrimeConfig,
     RuntimeConfig,
     SubprocessConfig,
@@ -34,7 +35,9 @@ def resolve_runtime_config(
                 f"task {task.data.idx!r} requires image {task.data.image!r}, but the subprocess "
                 "runtime has no container; use the docker or prime runtime"
             )
-        updates["image"] = task.data.image
+        updates["snapshot" if isinstance(config, AgentEnvConfig) else "image"] = (
+            task.data.image
+        )
     workdir_spec = type(config).model_fields.get("workdir")
     if (
         task.data.workdir is not None

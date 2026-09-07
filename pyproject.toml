@@ -105,6 +105,9 @@ modal = [
 openenv = [
     "openenv>=0.4.1",
 ]
+agentenv = [
+    "e2b>=2.35.0",
+]
 [tool.uv]
 preview = true
 required-version = ">=0.11.1"

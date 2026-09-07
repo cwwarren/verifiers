@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import secrets
 import shlex
@@ -12,6 +13,7 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from functools import cache
+from importlib.metadata import distribution
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -161,18 +163,6 @@ async def _cached_sdist(src: Path) -> tuple[str, bytes]:
             del _SDIST_BUILD_STATES[key]
 
 
-def _verifiers_root() -> Path:
-    import verifiers
-
-    root = Path(verifiers.__file__).resolve().parent.parent
-    if not (root / "pyproject.toml").exists():
-        raise ToolsetError(
-            "verifiers is not a source checkout (no pyproject above the package), so it can't be "
-            "uploaded to a sandbox; run sandboxed servers from a verifiers source install"
-        )
-    return root
-
-
 async def _install_in_sandbox(server: ServerBase, runtime: Runtime) -> str:
     source_dir = _source_dir(type(server))
     if source_dir is None:
@@ -188,16 +178,30 @@ async def _install_in_sandbox(server: ServerBase, runtime: Runtime) -> str:
     root = str(PurePosixPath(workdir) / ".vf-src")
     temp = str(PurePosixPath(workdir) / ".vf-tmp")
     cache = str(PurePosixPath(workdir) / ".vf-uv-cache")
-    vf, env = _verifiers_root(), Path(source_dir)
-    vf_name, vf_data = await _cached_sdist(vf)
+    import verifiers
+
+    vf, env = Path(verifiers.__file__).resolve().parent.parent, Path(source_dir)
+    if (vf / "pyproject.toml").is_file():
+        vf_name, vf_data = await _cached_sdist(vf)
+        vf_remote = f"{root}/{vf_name}"
+        await runtime.write(vf_remote, vf_data)
+    else:
+        direct_url = distribution("verifiers").read_text("direct_url.json")
+        if direct_url is None:
+            raise ToolsetError(
+                "sandbox launch requires a source checkout or Git-pinned verifiers install"
+            )
+        source = json.loads(direct_url)
+        if "vcs_info" not in source or source["vcs_info"]["vcs"] != "git":
+            raise ToolsetError(
+                "sandbox launch requires a source checkout or Git-pinned verifiers install"
+            )
+        vf_remote = f"verifiers @ git+{source['url']}@{source['vcs_info']['commit_id']}"
     if env == vf:
-        env_name, env_data = vf_name, vf_data
+        env_remote = vf_remote
     else:
         env_name, env_data = await _cached_sdist(env)
-    vf_remote = f"{root}/{vf_name}"
-    env_remote = f"{root}/{env_name}"
-    await runtime.write(vf_remote, vf_data)
-    if env_remote != vf_remote:
+        env_remote = f"{root}/{env_name}"
         await runtime.write(env_remote, env_data)
     venv = str(PurePosixPath(workdir) / ".vf-venv")
     root_q, temp_q, cache_q, venv_q = map(shlex.quote, (root, temp, cache, venv))

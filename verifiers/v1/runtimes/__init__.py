@@ -5,6 +5,11 @@ from typing import Annotated
 from pydantic import Field
 
 from verifiers.v1.configs.runtime import NetworkPolicyConfig
+from verifiers.v1.runtimes.agentenv import (
+    AgentEnvConfig,
+    AgentEnvRuntime,
+    AgentEnvRuntimeInfo,
+)
 from verifiers.v1.runtimes.base import (
     BaseRuntimeInfo,
     ProgramResult,
@@ -27,17 +32,23 @@ from verifiers.v1.runtimes.subprocess import (
 )
 
 RuntimeConfig = Annotated[
-    SubprocessConfig | DockerConfig | PrimeConfig | ModalConfig,
+    SubprocessConfig | DockerConfig | PrimeConfig | ModalConfig | AgentEnvConfig,
     Field(discriminator="type"),
 ]
 
 RuntimeInfo = Annotated[
-    SubprocessRuntimeInfo | DockerRuntimeInfo | PrimeRuntimeInfo | ModalRuntimeInfo,
+    SubprocessRuntimeInfo
+    | DockerRuntimeInfo
+    | PrimeRuntimeInfo
+    | ModalRuntimeInfo
+    | AgentEnvRuntimeInfo,
     Field(discriminator="type"),
 ]
 
 
 def _runtime_cls(config: RuntimeConfig) -> type[Runtime]:
+    if isinstance(config, AgentEnvConfig):
+        return AgentEnvRuntime
     if isinstance(config, PrimeConfig):
         return PrimeRuntime
     if isinstance(config, ModalConfig):
@@ -79,6 +90,9 @@ def runtime_is_local(config: RuntimeConfig) -> bool:
 
 
 __all__ = [
+    "AgentEnvConfig",
+    "AgentEnvRuntime",
+    "AgentEnvRuntimeInfo",
     "BaseRuntimeInfo",
     "DockerConfig",
     "DockerRuntime",
